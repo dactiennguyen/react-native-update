@@ -115,7 +115,7 @@ export interface UpdateGitOption {
 
   /**
    * Optional name of the folder where the repository will be cloned or updated.
-   * If not specified, a default folder name will be git_hot_update.
+   * If not specified, a default folder name will be app_core.
    */
   folderName?: string;
   /**
@@ -136,7 +136,7 @@ export interface UpdateGitOption {
   onCloneFailed?(msg: string): void;
   /**
    * The bundle path of the Git repository, it should place at root.
-   * Eg: the folder name is git_hot_update, bundle file place at git_hot_update/output/main.jsbundle, so bundlePath should be: "output/main.jsbundle".
+   * Eg: the folder name is app_core, bundle file place at app_core/output/main.jsbundle, so bundlePath should be: "output/main.jsbundle".
    */
   bundlePath: string;
   /**
@@ -158,7 +158,7 @@ export interface CloneOption {
 
   /**
    * Optional name of the folder where the repository will be cloned.
-   * If not provided, the repository name git_hot_update will be used.
+   * If not provided, the repository name app_core will be used.
    */
   folderName?: string;
 
@@ -177,7 +177,7 @@ export interface CloneOption {
 
   /**
    * The bundle path of the Git repository, it should place at root.
-   * Eg: the folder name is git_hot_update, bundle file place at git_hot_update/output/main.jsbundle, so bundlePath should be: "output/main.jsbundle".
+   * Eg: the folder name is app_core, bundle file place at app_core/output/main.jsbundle, so bundlePath should be: "output/main.jsbundle".
    */
   bundlePath: string;
 

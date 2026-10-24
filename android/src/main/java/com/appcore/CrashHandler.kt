@@ -1,12 +1,11 @@
-package com.otahotupdate
+package com.appcore
 
 import android.content.Context
 import android.widget.Toast
 import com.facebook.react.bridge.UiThreadUtil
-import com.rnhotupdate.Common.PATH
-import com.rnhotupdate.Common.VERSION
-import com.rnhotupdate.Common.BUNDLE_HISTORY
-import com.rnhotupdate.SharedPrefs
+import com.appcore.Common.PATH
+import com.appcore.Common.VERSION
+import com.appcore.Common.BUNDLE_HISTORY
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
@@ -70,7 +69,7 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
       try {
         UiThreadUtil.runOnUiThread {
           try {
-            Toast.makeText(context, "Update failed: $errorMessage", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Something went wrong, restarting: $errorMessage", Toast.LENGTH_LONG).show()
           } catch (e: Throwable) {
             // ignore, restarting matters more than the toast
           }

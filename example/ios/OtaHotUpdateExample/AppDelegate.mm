@@ -1,7 +1,7 @@
 #import "AppDelegate.h"
 
 #import <React/RCTBundleURLProvider.h>
-#import "OtaHotUpdate.h"
+#import "AppCore.h"
 
 @implementation AppDelegate
 
@@ -38,7 +38,7 @@
 #if DEBUG
   return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
-  return [OtaHotUpdate getBundle];
+  return [AppCore getBundle];
 #endif
 }
 

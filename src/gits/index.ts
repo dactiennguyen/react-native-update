@@ -19,7 +19,7 @@ const fs: any = { promises };
 const getFolder = (folderName?: string) => {
   try {
     const { DocumentDirectoryPath } = require('react-native-fs');
-    return DocumentDirectoryPath + (folderName || '/git_hot_update');
+    return DocumentDirectoryPath + (folderName || '/app_core');
   } catch (e) {}
   return '';
 };
@@ -37,7 +37,7 @@ const setConfig = async (
     fs,
     dir: getFolder(folderName),
     path: options?.userName || 'user.name',
-    value: options?.email || 'hotupdate',
+    value: options?.email || 'appcore',
   });
 };
 const cloneRepo = async (options: CloneOption) => {

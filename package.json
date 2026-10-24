@@ -1,7 +1,7 @@
 {
-  "name": "react-native-ota-hot-update",
+  "name": "react-native-app-core",
   "version": "2.4.71",
-  "description": "Hot update for react native",
+  "description": "Core runtime utilities for React Native apps",
   "source": "./src/index.tsx",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
@@ -28,7 +28,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "example": "yarn workspace react-native-ota-hot-update-example",
+    "example": "yarn workspace react-native-app-core-example",
     "test": "jest",
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
@@ -38,26 +38,20 @@
     "build-plugin": "tsc --build plugin"
   },
   "keywords": [
-    "hot-update",
-    "ota",
-    "code-push",
-    "update",
-    "react-native-hotupdate",
-    "react-native-codepush",
-    "ota-hot-update",
-    "custom-ota",
-    "rn-hotupdate"
+    "react-native",
+    "ios",
+    "android"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vantuan88291/react-native-ota-hot-update.git"
+    "url": "git+https://github.com/dactiennguyen/react-native-update.git"
   },
   "author": "vantuan88291 <vantuan88291@gmail.com> (https://github.com/vantuan88291)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/vantuan88291/react-native-ota-hot-update/issues"
+    "url": "https://github.com/dactiennguyen/react-native-update/issues"
   },
-  "homepage": "https://github.com/vantuan88291/react-native-ota-hot-update#readme",
+  "homepage": "https://github.com/dactiennguyen/react-native-update#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -184,7 +178,7 @@
     ]
   },
   "codegenConfig": {
-    "name": "RNOtaHotUpdateSpec",
+    "name": "RNAppCoreSpec",
     "type": "all",
     "jsSrcsDir": "src",
     "outputDir": {
@@ -192,7 +186,7 @@
       "android": "android/generated"
     },
     "android": {
-      "javaPackageName": "com.otahotupdate"
+      "javaPackageName": "com.appcore"
     },
     "includesGeneratedCode": true
   },

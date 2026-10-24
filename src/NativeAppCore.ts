@@ -17,4 +17,4 @@ export interface Spec extends TurboModule {
   writeFile(path: string, base64Content: string, encoding: string): Promise<boolean>;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('OtaHotUpdate');
+export default TurboModuleRegistry.getEnforcing<Spec>('AppCore');

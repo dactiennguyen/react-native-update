@@ -12,11 +12,11 @@ try {
   RNFS = require('react-native-fs');
 } catch {}
 
-// Try to load native OtaHotUpdate module for better performance
-let OtaHotUpdateNative: any = null;
+// Try to load native AppCore module for better performance
+let AppCoreNative: any = null;
 try {
   const { NativeModules } = require('react-native');
-  OtaHotUpdateNative = NativeModules.OtaHotUpdate;
+  AppCoreNative = NativeModules.AppCore;
 } catch (e) {
   // Native module not available, will fallback to RNFS
 }
@@ -108,13 +108,13 @@ export const writeFile = async (
     encoding = 'base64';
     const base64Content = Buffer.from(content).toString('base64');
 
-    if (OtaHotUpdateNative && OtaHotUpdateNative.writeFile) {
+    if (AppCoreNative && AppCoreNative.writeFile) {
       try {
         // Use native write (runs on native thread, doesn't block JS thread)
-        await OtaHotUpdateNative.writeFile(path, base64Content, encoding);
+        await AppCoreNative.writeFile(path, base64Content, encoding);
       } catch (e) {
         // Fallback to RNFS if native fails
-        console.warn('OtaHotUpdate.writeFile failed, falling back to RNFS:', e);
+        console.warn('AppCore.writeFile failed, falling back to RNFS:', e);
         await RNFS.writeFile(path, base64Content, encoding);
       }
     } else {

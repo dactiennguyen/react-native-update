@@ -1,4 +1,4 @@
-package com.otahotupdate
+package com.appcore
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -9,17 +9,16 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
-import com.rnhotupdate.Common.CURRENT_VERSION_CODE
-import com.rnhotupdate.Common.DEFAULT_BUNDLE
-import com.rnhotupdate.Common.PATH
-import com.rnhotupdate.Common.VERSION
-import com.rnhotupdate.SharedPrefs
+import com.appcore.Common.CURRENT_VERSION_CODE
+import com.appcore.Common.DEFAULT_BUNDLE
+import com.appcore.Common.PATH
+import com.appcore.Common.VERSION
 
 
-class OtaHotUpdate : BaseReactPackage() {
+class AppCore : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
-    return if (name == OtaHotUpdateModule.NAME) {
-      OtaHotUpdateModule(reactContext)
+    return if (name == AppCoreModule.NAME) {
+      AppCoreModule(reactContext)
     } else {
       null
     }
@@ -29,9 +28,9 @@ class OtaHotUpdate : BaseReactPackage() {
     return ReactModuleInfoProvider {
       val moduleInfos: MutableMap<String, ReactModuleInfo> = HashMap()
       val isTurboModule: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-      moduleInfos[OtaHotUpdateModule.NAME] = ReactModuleInfo(
-        OtaHotUpdateModule.NAME,
-        OtaHotUpdateModule.NAME,
+      moduleInfos[AppCoreModule.NAME] = ReactModuleInfo(
+        AppCoreModule.NAME,
+        AppCoreModule.NAME,
         false,  // canOverrideExistingModule
         false,  // needsEagerInit
         false,  // isCxxModule
@@ -63,6 +62,7 @@ class OtaHotUpdate : BaseReactPackage() {
       if (isHandleCrash) {
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler(context))
       }
+      LegacyCleanup.start(context)
       val sharedPrefs = SharedPrefs(context)
       val pathBundle = sharedPrefs.getString(PATH)
       val version = sharedPrefs.getString(VERSION)

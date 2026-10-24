@@ -1,4 +1,4 @@
-package com.otahotupdate
+package com.appcore
 
 import android.content.Context
 import android.content.Intent

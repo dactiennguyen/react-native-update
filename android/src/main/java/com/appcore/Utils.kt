@@ -1,9 +1,8 @@
-package com.otahotupdate
+package com.appcore
 
 import android.content.Context
 import android.icu.text.SimpleDateFormat
-import com.rnhotupdate.Common.PREVIOUS_PATH
-import com.rnhotupdate.SharedPrefs
+import com.appcore.Common.PREVIOUS_PATH
 import java.io.File
 import java.util.Date
 import java.util.Locale

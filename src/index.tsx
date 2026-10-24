@@ -4,7 +4,7 @@ import type { UpdateGitOption, UpdateOption, BundleInfo } from './type';
 import git from './gits';
 
 const LINKING_ERROR =
-  `The package 'react-native-ota-hot-update' doesn't seem to be linked. Make sure: \n\n` +
+  `The package 'react-native-app-core' doesn't seem to be linked. Make sure: \n\n` +
   Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';
@@ -12,12 +12,12 @@ const LINKING_ERROR =
 // @ts-expect-error
 const isTurboModuleEnabled = global.__turboModuleProxy != null;
 
-const OtaHotUpdateModule = isTurboModuleEnabled
-  ? require('./NativeOtaHotUpdate').default
-  : NativeModules.OtaHotUpdate;
+const AppCoreModule = isTurboModuleEnabled
+  ? require('./NativeAppCore').default
+  : NativeModules.AppCore;
 
-const RNhotupdate = OtaHotUpdateModule
-  ? OtaHotUpdateModule
+const RNAppCore = AppCoreModule
+  ? AppCoreModule
   : new Proxy(
       {},
       {
@@ -36,7 +36,7 @@ const downloadBundleFile = async (
   const res = await downloadManager
     .config({
       fileCache: Platform.OS === 'android',
-      path: !!downloadManager?.fs?.dirs?.LibraryDir && Platform.OS === 'ios' ? `${downloadManager.fs.dirs.LibraryDir}/${new Date().valueOf()}_hotupdate.zip` : undefined
+      path: !!downloadManager?.fs?.dirs?.LibraryDir && Platform.OS === 'ios' ? `${downloadManager.fs.dirs.LibraryDir}/${new Date().valueOf()}_appcore.zip` : undefined
     })
     .fetch('GET', uri, {
       ...headers,
@@ -56,22 +56,22 @@ function setupBundlePath(
   metadata?: any
 ): Promise<boolean> {
   const metadataString = metadata ? JSON.stringify(metadata) : undefined;
-  return RNhotupdate.setupBundlePath(path, extension, version, maxVersions || 2, metadataString);
+  return RNAppCore.setupBundlePath(path, extension, version, maxVersions || 2, metadataString);
 }
 function setupExactBundlePath(path: string): Promise<boolean> {
-  return RNhotupdate.setExactBundlePath(path);
+  return RNAppCore.setExactBundlePath(path);
 }
 function deleteBundlePath(): Promise<boolean> {
-  return RNhotupdate.deleteBundle(1);
+  return RNAppCore.deleteBundle(1);
 }
 function getCurrentVersion(): Promise<string> {
-  return RNhotupdate.getCurrentVersion(0);
+  return RNAppCore.getCurrentVersion(0);
 }
 
 type Metadata = object | number | string | boolean | null;
 
 function getUpdateMetadata<T extends Metadata = Metadata>(): Promise<T> {
-  return RNhotupdate.getUpdateMetadata(0)
+  return RNAppCore.getUpdateMetadata(0)
     .then((metadataString: string | null) => {
       try {
         return metadataString ? JSON.parse(metadataString) : null;
@@ -81,25 +81,25 @@ function getUpdateMetadata<T extends Metadata = Metadata>(): Promise<T> {
     });
 }
 function rollbackToPreviousBundle(): Promise<boolean> {
-  return RNhotupdate.rollbackToPreviousBundle(0);
+  return RNAppCore.rollbackToPreviousBundle(0);
 }
 async function getVersionAsNumber() {
   const rawVersion = await getCurrentVersion();
   return +rawVersion;
 }
 function setCurrentVersion(version: number): Promise<boolean> {
-  return RNhotupdate.setCurrentVersion(version + '');
+  return RNAppCore.setCurrentVersion(version + '');
 }
 function setUpdateMetadata<T extends Metadata = Metadata>(metadata: T): Promise<boolean> {
   try {
     const metadataString = JSON.stringify(metadata);
-    return RNhotupdate.setUpdateMetadata(metadataString);
+    return RNAppCore.setUpdateMetadata(metadataString);
   } catch (error) {
     return Promise.reject(new Error('Failed to stringify metadata'));
   }
 }
 async function resetApp() {
-  RNhotupdate.restart();
+  RNAppCore.restart();
 }
 function removeBundle(restartAfterRemoved?: boolean) {
   deleteBundlePath().then((data) => {
@@ -282,7 +282,7 @@ const parseBundleMetadata = (metadata: any): any => {
   }
 };
 function getBundleList(): Promise<BundleInfo[]> {
-  return RNhotupdate.getBundleList(0).then((jsonString: string) => {
+  return RNAppCore.getBundleList(0).then((jsonString: string) => {
     try {
       const data = JSON.parse(jsonString);
       return data.map((item: any) => ({
@@ -297,11 +297,11 @@ function getBundleList(): Promise<BundleInfo[]> {
 }
 
 function deleteBundleById(id: string): Promise<boolean> {
-  return RNhotupdate.deleteBundleById(id);
+  return RNAppCore.deleteBundleById(id);
 }
 
 function clearAllBundles(): Promise<boolean> {
-  return RNhotupdate.clearAllBundles(0);
+  return RNAppCore.clearAllBundles(0);
 }
 
 export default {
@@ -322,7 +322,7 @@ export default {
     checkForGitUpdate,
     ...git,
     removeGitUpdate: (folder?: string) => {
-      RNhotupdate.setExactBundlePath('');
+      RNAppCore.setExactBundlePath('');
       git.removeGitUpdate(folder);
     },
   },

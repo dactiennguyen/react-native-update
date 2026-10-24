@@ -22,7 +22,7 @@ export interface GitModule {
   }): Promise<{ success: boolean; bundle?: string; msg?: string }>;
 }
 
-export interface OtaHotUpdate {
+export interface AppCore {
   /**
    * Set up the path to the downloaded bundle file.
    * @param path - The path to the bundle file.
@@ -98,6 +98,6 @@ export interface OtaHotUpdate {
   git: GitModule;
 }
 
-declare const OtaHotUpdate: OtaHotUpdate;
+declare const AppCore: AppCore;
 
-export default OtaHotUpdate;
+export default AppCore;

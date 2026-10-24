@@ -1,4 +1,4 @@
-import hotUpdate from 'react-native-ota-hot-update';
+import hotUpdate from 'react-native-app-core';
 import { Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import React from 'react';

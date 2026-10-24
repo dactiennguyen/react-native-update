@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import hotUpdate from 'react-native-ota-hot-update';
-import type { BundleInfo } from 'react-native-ota-hot-update';
+import hotUpdate from 'react-native-app-core';
+import type { BundleInfo } from 'react-native-app-core';
 
 interface BundleManagerScreenProps {
   onBack?: () => void;

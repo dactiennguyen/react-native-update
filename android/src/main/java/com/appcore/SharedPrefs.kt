@@ -1,4 +1,4 @@
-package com.rnhotupdate
+package com.appcore
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -39,9 +39,10 @@ object Common {
     val VERSION = "VERSION"
     val PREVIOUS_VERSION = "PREVIOUS_VERSION"
     val CURRENT_VERSION_CODE = "CURRENT_VERSION_CODE"
-    val SHARED_PREFERENCE_NAME = "HOT-UPDATE-REACT_NATIVE"
+    val SHARED_PREFERENCE_NAME = "APP-CORE-REACT_NATIVE"
     val DEFAULT_BUNDLE = "assets://index.android.bundle"
     val METADATA = "METADATA"
     val BUNDLE_HISTORY = "BUNDLE_HISTORY"
+    val LEGACY_CLEANUP_DONE = "LEGACY_CLEANUP_DONE"
     const val DEFAULT_MAX_BUNDLE_VERSIONS = 2
 }

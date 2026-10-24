@@ -1,19 +1,17 @@
-package com.otahotupdate
+package com.appcore
 
 import android.content.Context
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
-import com.otahotupdate.OtaHotUpdate.Companion.getVersionCode
-import com.rnhotupdate.Common
-import com.rnhotupdate.Common.CURRENT_VERSION_CODE
-import com.rnhotupdate.Common.PATH
-import com.rnhotupdate.Common.PREVIOUS_PATH
-import com.rnhotupdate.Common.VERSION
-import com.rnhotupdate.Common.PREVIOUS_VERSION
-import com.rnhotupdate.Common.METADATA
-import com.rnhotupdate.Common.BUNDLE_HISTORY
-import com.rnhotupdate.SharedPrefs
+import com.appcore.AppCore.Companion.getVersionCode
+import com.appcore.Common.CURRENT_VERSION_CODE
+import com.appcore.Common.PATH
+import com.appcore.Common.PREVIOUS_PATH
+import com.appcore.Common.VERSION
+import com.appcore.Common.PREVIOUS_VERSION
+import com.appcore.Common.METADATA
+import com.appcore.Common.BUNDLE_HISTORY
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,8 +34,8 @@ data class BundleVersion(
   val metadata: String? = null
 )
 
-class OtaHotUpdateModule internal constructor(context: ReactApplicationContext) :
-  OtaHotUpdateSpec(context) {
+class AppCoreModule internal constructor(context: ReactApplicationContext) :
+  AppCoreSpec(context) {
   private val utils: Utils = Utils(context)
   private val appContext: Context = context.applicationContext ?: context
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -591,6 +589,6 @@ class OtaHotUpdateModule internal constructor(context: ReactApplicationContext) 
   }
 
   companion object {
-    const val NAME = "OtaHotUpdate"
+    const val NAME = "AppCore"
   }
 }

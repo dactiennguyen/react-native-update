@@ -13048,6 +13048,64 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-app-core-example@workspace:example":
+  version: 0.0.0-use.local
+  resolution: "react-native-app-core-example@workspace:example"
+  dependencies:
+    "@babel/core": ^7.25.2
+    "@babel/preset-env": ^7.25.3
+    "@babel/runtime": ^7.25.0
+    "@react-native-community/cli": 15.0.1
+    "@react-native-community/cli-platform-android": 15.0.1
+    "@react-native-community/cli-platform-ios": 15.0.1
+    "@react-native/babel-preset": 0.78.0
+    "@react-native/metro-config": 0.78.0
+    "@react-native/typescript-config": 0.78.0
+    isomorphic-git: ^1.32.3
+    react: 19.0.0
+    react-native: 0.78.0
+    react-native-blob-util: ^0.19.11
+    react-native-builder-bob: ^0.33.1
+    react-native-fs: 2.20.0
+  languageName: unknown
+  linkType: soft
+
+"react-native-app-core@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "react-native-app-core@workspace:."
+  dependencies:
+    "@commitlint/config-conventional": ^17.0.2
+    "@evilmartians/lefthook": ^1.5.0
+    "@expo/config-plugins": ^9.0.15
+    "@react-native-community/cli": 15.0.1
+    "@react-native/eslint-config": ^0.73.1
+    "@release-it/conventional-changelog": ^9.0.2
+    "@types/jest": ^29.5.5
+    "@types/react": ^18.2.44
+    buffer: ^6.0.3
+    commitlint: ^17.0.2
+    del-cli: ^5.1.0
+    eslint: ^8.51.0
+    eslint-config-prettier: ^9.0.0
+    eslint-plugin-prettier: ^5.0.1
+    expo-module-scripts: ^4.0.2
+    jest: ^29.7.0
+    prettier: ^3.0.3
+    react: 18.3.1
+    react-native: 0.76.3
+    react-native-builder-bob: ^0.33.1
+    react-native-fs: 2.20.0
+    release-it: ^17.10.0
+    turbo: ^1.10.7
+    typescript: ^5.2.2
+  peerDependencies:
+    isomorphic-git: "*"
+    react: "*"
+    react-native: "*"
+    react-native-fs: "*"
+  languageName: unknown
+  linkType: soft
+
 "react-native-blob-util@npm:^0.19.11":
   version: 0.19.11
   resolution: "react-native-blob-util@npm:0.19.11"
@@ -13108,64 +13166,6 @@ __metadata:
   checksum: 0be9bb9a5c13b501d0a3006efc3aa5c0b5b211456ee04718297f4e522532f3527f1daa220bd67d3b82d819ed8fdab8f64b7d6e0d7b768c1fd1d8ec9122d94316
   languageName: node
   linkType: hard
-
-"react-native-ota-hot-update-example@workspace:example":
-  version: 0.0.0-use.local
-  resolution: "react-native-ota-hot-update-example@workspace:example"
-  dependencies:
-    "@babel/core": ^7.25.2
-    "@babel/preset-env": ^7.25.3
-    "@babel/runtime": ^7.25.0
-    "@react-native-community/cli": 15.0.1
-    "@react-native-community/cli-platform-android": 15.0.1
-    "@react-native-community/cli-platform-ios": 15.0.1
-    "@react-native/babel-preset": 0.78.0
-    "@react-native/metro-config": 0.78.0
-    "@react-native/typescript-config": 0.78.0
-    isomorphic-git: ^1.32.3
-    react: 19.0.0
-    react-native: 0.78.0
-    react-native-blob-util: ^0.19.11
-    react-native-builder-bob: ^0.33.1
-    react-native-fs: 2.20.0
-  languageName: unknown
-  linkType: soft
-
-"react-native-ota-hot-update@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "react-native-ota-hot-update@workspace:."
-  dependencies:
-    "@commitlint/config-conventional": ^17.0.2
-    "@evilmartians/lefthook": ^1.5.0
-    "@expo/config-plugins": ^9.0.15
-    "@react-native-community/cli": 15.0.1
-    "@react-native/eslint-config": ^0.73.1
-    "@release-it/conventional-changelog": ^9.0.2
-    "@types/jest": ^29.5.5
-    "@types/react": ^18.2.44
-    buffer: ^6.0.3
-    commitlint: ^17.0.2
-    del-cli: ^5.1.0
-    eslint: ^8.51.0
-    eslint-config-prettier: ^9.0.0
-    eslint-plugin-prettier: ^5.0.1
-    expo-module-scripts: ^4.0.2
-    jest: ^29.7.0
-    prettier: ^3.0.3
-    react: 18.3.1
-    react-native: 0.76.3
-    react-native-builder-bob: ^0.33.1
-    react-native-fs: 2.20.0
-    release-it: ^17.10.0
-    turbo: ^1.10.7
-    typescript: ^5.2.2
-  peerDependencies:
-    isomorphic-git: "*"
-    react: "*"
-    react-native: "*"
-    react-native-fs: "*"
-  languageName: unknown
-  linkType: soft
 
 "react-native@npm:0.76.3":
   version: 0.76.3

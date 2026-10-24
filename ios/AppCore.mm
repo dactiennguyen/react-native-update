@@ -1,8 +1,8 @@
-#import "OtaHotUpdate.h"
+#import "AppCore.h"
 #import <SSZipArchive/SSZipArchive.h>
 #include <signal.h>
 
-@interface OtaHotUpdate ()
+@interface AppCore ()
 - (NSArray *)loadBundleHistory;
 - (void)saveBundleHistory:(NSArray *)history;
 - (void)saveBundleVersion:(NSString *)path version:(NSInteger)version maxVersions:(NSInteger)maxVersions metadata:(NSString *)metadata;
@@ -11,7 +11,227 @@
 
 static NSUncaughtExceptionHandler *previousHandler = NULL;
 static BOOL isBeginning = YES;
-@implementation OtaHotUpdate
+// An uncaught NSException is followed by abort() -> SIGABRT, so both handlers can run for one
+// crash. Only the first may roll back; the second would find PREVIOUS_BUNDLE_PATH already
+// consumed and clear the rolled-back PATH, dropping the app to the built-in bundle.
+static BOOL didHandleCrash = NO;
+
+// Dedicated suite instead of standardUserDefaults, so keys like PATH/VERSION never
+// mix with the host app's defaults (same role as the SharedPreferences file on Android).
+static NSUserDefaults *AppCoreDefaults(void) {
+    static NSUserDefaults *defaults = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.appcore.storage"];
+    });
+    return defaults;
+}
+
+static NSArray<NSString *> *AppCoreHistoryPaths(NSString *historyJson) {
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    if (historyJson.length == 0) {
+        return paths;
+    }
+    id history = [NSJSONSerialization JSONObjectWithData:[historyJson dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    if ([history isKindOfClass:[NSArray class]]) {
+        for (id bundle in history) {
+            if ([bundle isKindOfClass:[NSDictionary class]] && [bundle[@"path"] isKindOfClass:[NSString class]]) {
+                [paths addObject:bundle[@"path"]];
+            }
+        }
+    }
+    return paths;
+}
+
+static BOOL AppCoreIsInside(NSString *path, NSString *folder) {
+    NSString *child = path.stringByStandardizingPath;
+    NSString *parent = folder.stringByStandardizingPath;
+    return [child isEqualToString:parent] || [child hasPrefix:[parent stringByAppendingString:@"/"]];
+}
+
+static BOOL AppCoreHoldsAny(NSString *folder, NSArray<NSString *> *paths) {
+    for (NSString *path in paths) {
+        if (AppCoreIsInside(path, folder)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+// Recorded paths are absolute, but the app's data container can move between app versions.
+static NSString *AppCoreRebaseIntoContainer(NSString *path) {
+    NSRange range = [path rangeOfString:@"/Containers/Data/Application/[^/]+/" options:NSRegularExpressionSearch];
+    if (range.location == NSNotFound) {
+        return path;
+    }
+    return [NSHomeDirectory() stringByAppendingPathComponent:[path substringFromIndex:NSMaxRange(range)]];
+}
+
+// The old package unzipped every download into "<zip name>.unzip": the folder a bundle was
+// extracted into, or nil.
+static NSString *AppCoreLegacyUnzipFolder(NSString *bundlePath) {
+    NSString *home = NSHomeDirectory();
+    NSString *current = bundlePath.stringByDeletingLastPathComponent;
+    while (AppCoreIsInside(current, home) && !AppCoreIsInside(home, current)) {
+        if ([current.pathExtension isEqualToString:@"unzip"]) {
+            return current;
+        }
+        current = current.stringByDeletingLastPathComponent;
+    }
+    return nil;
+}
+
+// Its git mode cloned into Documents + folderName ("/git_hot_update" unless configured): the
+// folder above a recorded bundle that holds the .git directory, strictly inside Documents, or nil.
+static NSString *AppCoreLegacyGitCheckout(NSString *bundlePath, NSString *documentsDir) {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *current = bundlePath.stringByDeletingLastPathComponent;
+    while (AppCoreIsInside(current, documentsDir) && !AppCoreIsInside(documentsDir, current)) {
+        if ([fileManager fileExistsAtPath:[current stringByAppendingPathComponent:@".git"]]) {
+            return current;
+        }
+        current = current.stringByDeletingLastPathComponent;
+    }
+    return nil;
+}
+
+// One-time removal of what the previous package (react-native-ota-hot-update) left behind.
+// Those bundles call the old native module name and cannot run on this binary, so nothing is
+// migrated, only deleted.
+// - Runs only while traces of the old package exist, and records completion in our own storage,
+//   so it never touches anything again afterwards (e.g. a new git checkout in the same folder).
+// - Only deletes what the old package created: its zips, its unzip folders and its git
+//   checkouts. A recorded bundle anywhere else is left alone.
+// - Never deletes a folder holding a bundle this package currently uses.
+// - The old keys live in standardUserDefaults under generic names (PATH, VERSION...): they are
+//   only removed when they point at the old package's bundles, and only after those files are
+//   gone, so a failed run is retried on the next start instead of losing track of the files.
+static void AppCoreLegacyCleanup(void) {
+    NSUserDefaults *store = AppCoreDefaults();
+    if ([store boolForKey:@"LEGACY_CLEANUP_DONE"]) {
+        return;
+    }
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSUserDefaults *legacyDefaults = [NSUserDefaults standardUserDefaults];
+    NSString *documentsDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *libraryDir = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *cachesDir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *defaultGitFolder = [documentsDir stringByAppendingPathComponent:@"git_hot_update"];
+    NSString *trash = [cachesDir stringByAppendingPathComponent:@"appcore-trash"];
+
+    NSMutableArray *values = [NSMutableArray array];
+    for (NSString *key in @[@"PATH", @"PREVIOUS_BUNDLE_PATH", @"OLD_PATH"]) {
+        id value = [legacyDefaults objectForKey:key];
+        if (value) {
+            [values addObject:value];
+        }
+    }
+    [values addObjectsFromArray:AppCoreHistoryPaths([legacyDefaults stringForKey:@"BUNDLE_HISTORY"])];
+    NSMutableArray<NSString *> *targets = [NSMutableArray array];
+    NSMutableArray<NSString *> *checkouts = [NSMutableArray array];
+    // Remembered across retries: once a checkout is moved aside, its paths no longer resolve.
+    BOOL ownsKeys = [store boolForKey:@"LEGACY_KEYS_FOUND"];
+    for (id value in values) {
+        if (![value isKindOfClass:[NSString class]] || [value length] == 0) {
+            continue;
+        }
+        NSString *bundle = AppCoreRebaseIntoContainer(value);
+        NSString *unzipFolder = AppCoreLegacyUnzipFolder(bundle);
+        NSString *checkout = unzipFolder ? nil : AppCoreLegacyGitCheckout(bundle, documentsDir);
+        if (unzipFolder) {
+            [targets addObject:unzipFolder];
+        } else if (checkout) {
+            [checkouts addObject:checkout];
+        } else if (!AppCoreIsInside(bundle, defaultGitFolder)) {
+            continue; // not created by the old package
+        }
+        ownsKeys = YES;
+    }
+
+    // Downloads were saved as <timestamp>_hotupdate.zip and unzipped next to it.
+    for (NSString *dir in @[libraryDir, cachesDir]) {
+        for (NSString *name in [fileManager contentsOfDirectoryAtPath:dir error:nil]) {
+            if ([name hasSuffix:@"_hotupdate.unzip"] || [name hasSuffix:@"_hotupdate.zip"]) {
+                [targets addObject:[dir stringByAppendingPathComponent:name]];
+            }
+        }
+    }
+    BOOL hasTrash = [fileManager fileExistsAtPath:trash];
+    if (!ownsKeys && targets.count == 0 && !hasTrash) {
+        [store setBool:YES forKey:@"LEGACY_CLEANUP_DONE"];
+        [store synchronize];
+        return;
+    }
+    if (ownsKeys) {
+        [store setBool:YES forKey:@"LEGACY_KEYS_FOUND"];
+        [checkouts addObject:defaultGitFolder];
+    }
+
+    NSMutableArray<NSString *> *inUse = [NSMutableArray array];
+    NSString *currentPath = [store stringForKey:@"PATH"];
+    if (currentPath.length > 0) {
+        [inUse addObject:currentPath];
+    }
+    [inUse addObjectsFromArray:AppCoreHistoryPaths([store stringForKey:@"BUNDLE_HISTORY"])];
+
+    // Move the old checkouts aside before JS starts, so a new clone into the same folder can
+    // never race with the delete below.
+    BOOL movedAll = YES;
+    for (NSString *checkout in [NSOrderedSet orderedSetWithArray:checkouts]) {
+        if (AppCoreHoldsAny(checkout, inUse) || ![fileManager fileExistsAtPath:checkout]) {
+            continue;
+        }
+        [fileManager createDirectoryAtPath:trash withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *destination = [trash stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+        if (![fileManager moveItemAtPath:checkout toPath:destination error:nil]) {
+            movedAll = NO; // retried on the next start
+        }
+    }
+    [targets addObject:trash];
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @try {
+            BOOL removedAll = movedAll;
+            for (NSString *target in targets) {
+                if (AppCoreHoldsAny(target, inUse) || ![fileManager fileExistsAtPath:target]) {
+                    continue;
+                }
+                if (![fileManager removeItemAtPath:target error:nil]) {
+                    removedAll = NO;
+                }
+            }
+            if (!removedAll) {
+                return;
+            }
+            if (ownsKeys) {
+                for (NSString *key in @[@"PATH", @"VERSION", @"VERSION_NAME", @"METADATA", @"BUNDLE_HISTORY",
+                                        @"PREVIOUS_BUNDLE_PATH", @"PREVIOUS_BUNDLE_VERSION", @"OLD_PATH", @"PREVIOUS_VERSION"]) {
+                    [legacyDefaults removeObjectForKey:key];
+                }
+                [legacyDefaults synchronize];
+            }
+            [store removeObjectForKey:@"LEGACY_KEYS_FOUND"];
+            [store setBool:YES forKey:@"LEGACY_CLEANUP_DONE"];
+            [store synchronize];
+        } @catch (NSException *exception) {
+            // best effort, retried on the next start
+        }
+    });
+}
+
+// Called on app start (before JS runs) and on module init; does its work once per process.
+static void AppCoreStartLegacyCleanup(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        @try {
+            AppCoreLegacyCleanup();
+        } @catch (NSException *exception) {
+            // best effort, must never affect app start
+        }
+    });
+}
+
+@implementation AppCore
 RCT_EXPORT_MODULE()
 
 + (BOOL)requiresMainQueueSetup {
@@ -22,13 +242,14 @@ RCT_EXPORT_MODULE()
     self = [super init];
     if (self) {
         previousHandler = NSGetUncaughtExceptionHandler();
-        NSSetUncaughtExceptionHandler(&OTAExceptionHandler);
-        signal(SIGABRT, OTASignalHandler);
-        signal(SIGILL, OTASignalHandler);
-        signal(SIGSEGV, OTASignalHandler);
-        signal(SIGFPE, OTASignalHandler);
-        signal(SIGBUS, OTASignalHandler);
-        signal(SIGPIPE, OTASignalHandler);
+        NSSetUncaughtExceptionHandler(&AppCoreExceptionHandler);
+        signal(SIGABRT, AppCoreSignalHandler);
+        signal(SIGILL, AppCoreSignalHandler);
+        signal(SIGSEGV, AppCoreSignalHandler);
+        signal(SIGFPE, AppCoreSignalHandler);
+        signal(SIGBUS, AppCoreSignalHandler);
+        signal(SIGPIPE, AppCoreSignalHandler);
+        AppCoreStartLegacyCleanup();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             isBeginning = NO;
         });
@@ -36,13 +257,14 @@ RCT_EXPORT_MODULE()
     return self;
 }
 
-void OTASignalHandler(int sig) {
-    if (isBeginning) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+void AppCoreSignalHandler(int sig) {
+    if (isBeginning && !didHandleCrash) {
+        didHandleCrash = YES;
+        NSUserDefaults *defaults = AppCoreDefaults();
         // Use PREVIOUS_BUNDLE_PATH (simple key, written by saveBundleVersion before each update)
         NSString *previousPath = [defaults stringForKey:@"PREVIOUS_BUNDLE_PATH"];
         if (previousPath && previousPath.length > 0) {
-            BOOL isDeleted = [OtaHotUpdate removeBundleIfNeeded:@"PATH"];
+            BOOL isDeleted = [AppCore removeBundleIfNeeded:@"PATH"];
             if (isDeleted) {
                 [defaults setObject:previousPath forKey:@"PATH"];
                 NSString *previousVersion = [defaults stringForKey:@"PREVIOUS_BUNDLE_VERSION"];
@@ -63,12 +285,13 @@ void OTASignalHandler(int sig) {
     signal(sig, SIG_DFL);
     raise(sig);
 }
-void OTAExceptionHandler(NSException *exception) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    if (isBeginning) {
+void AppCoreExceptionHandler(NSException *exception) {
+    NSUserDefaults *defaults = AppCoreDefaults();
+    if (isBeginning && !didHandleCrash) {
+        didHandleCrash = YES;
         NSString *previousPath = [defaults stringForKey:@"PREVIOUS_BUNDLE_PATH"];
         if (previousPath && previousPath.length > 0) {
-            BOOL isDeleted = [OtaHotUpdate removeBundleIfNeeded:@"PATH"];
+            BOOL isDeleted = [AppCore removeBundleIfNeeded:@"PATH"];
             if (isDeleted) {
                 [defaults setObject:previousPath forKey:@"PATH"];
                 NSString *previousVersion = [defaults stringForKey:@"PREVIOUS_BUNDLE_VERSION"];
@@ -84,7 +307,7 @@ void OTAExceptionHandler(NSException *exception) {
         [defaults removeObjectForKey:@"PREVIOUS_BUNDLE_PATH"];
         [defaults removeObjectForKey:@"PREVIOUS_BUNDLE_VERSION"];
         [defaults synchronize];
-    } else if (previousHandler) {
+    } else if (!isBeginning && previousHandler) {
         previousHandler(exception);
     }
 }
@@ -166,7 +389,7 @@ void OTAExceptionHandler(NSException *exception) {
 
 + (BOOL)removeBundleIfNeeded:(NSString *)pathKey {
     NSString *keyToUse = pathKey ? pathKey : @"OLD_PATH";
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *retrievedString = [defaults stringForKey:keyToUse];
     NSError *error = nil;
   if (retrievedString && [self isFilePathValid:retrievedString]) {
@@ -185,7 +408,8 @@ void OTAExceptionHandler(NSException *exception) {
 }
 
 + (NSURL *)getBundle {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    AppCoreStartLegacyCleanup();
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *retrievedString = [defaults stringForKey:@"PATH"];
     NSString *currentVersionName = [defaults stringForKey:@"VERSION_NAME"];
     NSString *versionName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"];
@@ -311,11 +535,11 @@ void OTAExceptionHandler(NSException *exception) {
 RCT_EXPORT_METHOD(setupBundlePath:(NSString *)path extension:(NSString *)extension version:(nonnull NSNumber *)version maxVersions:(nonnull NSNumber *)maxVersions metadata:(NSString *)metadata
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    if ([OtaHotUpdate isFilePathValid:path]) {
+    if ([AppCore isFilePathValid:path]) {
         //Unzip file
         NSString *extractedFilePath = [self unzipFileAtPath:path extension:(extension != nil) ? extension : @".jsbundle" version:version];
         if (extractedFilePath) {
-            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+            NSUserDefaults *defaults = AppCoreDefaults();
 
             // If version is provided, save to history system
             if (version != nil) {
@@ -342,11 +566,11 @@ RCT_EXPORT_METHOD(setupBundlePath:(NSString *)path extension:(NSString *)extensi
 RCT_EXPORT_METHOD(deleteBundle:(double)i
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *currentPath = [defaults stringForKey:@"PATH"];
 
     // Delete current bundle from file system
-    BOOL isDeleted = [OtaHotUpdate removeBundleIfNeeded:@"PATH"];
+    BOOL isDeleted = [AppCore removeBundleIfNeeded:@"PATH"];
 
     // Remove current bundle from history if exists
     if (currentPath && currentPath.length > 0) {
@@ -371,7 +595,7 @@ RCT_EXPORT_METHOD(deleteBundle:(double)i
 RCT_EXPORT_METHOD(rollbackToPreviousBundle:(double)i
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = AppCoreDefaults();
   NSString *currentPath = [defaults stringForKey:@"PATH"];
 
   // Use history to find previous version
@@ -399,9 +623,9 @@ RCT_EXPORT_METHOD(rollbackToPreviousBundle:(double)i
         }
       }
 
-      if (previousBundle && [OtaHotUpdate isFilePathValid:previousBundle[@"path"]]) {
+      if (previousBundle && [AppCore isFilePathValid:previousBundle[@"path"]]) {
         // Rollback to previous bundle from history
-        BOOL isDeleted = [OtaHotUpdate removeBundleIfNeeded:@"PATH"];
+        BOOL isDeleted = [AppCore removeBundleIfNeeded:@"PATH"];
         if (isDeleted) {
           [defaults setObject:previousBundle[@"path"] forKey:@"PATH"];
           [defaults setObject:[NSString stringWithFormat:@"%@", previousBundle[@"version"]] forKey:@"VERSION"];
@@ -420,7 +644,7 @@ RCT_EXPORT_METHOD(getCurrentVersion:(double)a
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults *defaults = AppCoreDefaults();
   NSString *version = [defaults stringForKey:@"VERSION"];
      if (version) {
          resolve(version);
@@ -432,7 +656,7 @@ RCT_EXPORT_METHOD(getCurrentVersion:(double)a
 RCT_EXPORT_METHOD(setCurrentVersion:(NSString *)version
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     // No longer save PREVIOUS_VERSION, use history instead
     if (version) {
         [defaults setObject:version forKey:@"VERSION"];
@@ -447,7 +671,7 @@ RCT_EXPORT_METHOD(setUpdateMetadata:(NSString *)metadataString
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     if (metadataString) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSUserDefaults *defaults = AppCoreDefaults();
         [defaults setObject:metadataString forKey:@"METADATA"];
         [defaults synchronize];
         resolve(@(YES));
@@ -460,7 +684,7 @@ RCT_EXPORT_METHOD(getUpdateMetadata:(double)a
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *metadata = [defaults stringForKey:@"METADATA"];
 
     if (metadata) {
@@ -473,8 +697,8 @@ RCT_EXPORT_METHOD(getUpdateMetadata:(double)a
 RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-  if ([OtaHotUpdate isFilePathValid:path]) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  if ([AppCore isFilePathValid:path]) {
+        NSUserDefaults *defaults = AppCoreDefaults();
         [defaults setObject:path forKey:@"PATH"];
         [defaults setObject:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"] forKey:@"VERSION_NAME"];
         [defaults synchronize];
@@ -486,10 +710,10 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
 
 - (void)loadBundle
 {
-    RCTTriggerReloadCommandListeners(@"react-native-ota-hot-update: Restart");
+    RCTTriggerReloadCommandListeners(@"react-native-app-core: Restart");
 }
 - (NSArray *)loadBundleHistory {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *historyJson = [defaults stringForKey:@"BUNDLE_HISTORY"];
 
     // If history exists, load it
@@ -518,7 +742,7 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
     // Add current bundle if has version
     if (currentVersion && currentVersion.length > 0) {
         NSInteger version = [currentVersion integerValue];
-        if (version > 0 && [OtaHotUpdate isFilePathValid:currentPath]) {
+        if (version > 0 && [AppCore isFilePathValid:currentPath]) {
             NSFileManager *fileManager = [NSFileManager defaultManager];
             NSDictionary *attributes = [fileManager attributesOfItemAtPath:currentPath error:nil];
             NSDate *modificationDate = attributes[NSFileModificationDate];
@@ -536,7 +760,7 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
     // Add previous bundle if exists
     if (previousPath && previousPath.length > 0 && previousVersion && previousVersion.length > 0) {
         NSInteger version = [previousVersion integerValue];
-        if (version > 0 && [OtaHotUpdate isFilePathValid:previousPath]) {
+        if (version > 0 && [AppCore isFilePathValid:previousPath]) {
             NSFileManager *fileManager = [NSFileManager defaultManager];
             NSDictionary *attributes = [fileManager attributesOfItemAtPath:previousPath error:nil];
             NSDate *modificationDate = attributes[NSFileModificationDate];
@@ -569,7 +793,7 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
 }
 
 - (void)saveBundleHistory:(NSArray *)history {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSError *error = nil;
     NSData *data = [NSJSONSerialization dataWithJSONObject:history options:0 error:&error];
     if (!error && data) {
@@ -584,7 +808,7 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
 }
 
 - (void)saveBundleVersion:(NSString *)path version:(NSInteger)version maxVersions:(NSInteger)maxVersions metadata:(NSString *)metadata {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSArray *history = [self loadBundleHistory];
 
     // Create new bundle entry
@@ -631,7 +855,7 @@ RCT_EXPORT_METHOD(setExactBundlePath:(NSString *)path
 
     for (NSDictionary *bundle in uniqueHistory) {
         if (![versionsToKeep containsObject:bundle[@"version"]]) {
-            [OtaHotUpdate deleteBundleAtPath:bundle[@"path"]];
+            [AppCore deleteBundleAtPath:bundle[@"path"]];
         }
     }
 
@@ -670,7 +894,7 @@ RCT_EXPORT_METHOD(getBundleList:(double)a
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSArray *history = [self loadBundleHistory];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *activePath = [defaults stringForKey:@"PATH"];
 
     NSMutableArray *bundleList = [NSMutableArray array];
@@ -683,7 +907,8 @@ RCT_EXPORT_METHOD(getBundleList:(double)a
         bundleInfo[@"date"] = bundle[@"timestamp"];
         bundleInfo[@"path"] = path;
         bundleInfo[@"isActive"] = @([path isEqualToString:activePath]);
-        if (bundle[@"metadata"]) {
+        // Entries migrated from PATH/VERSION carry NSNull here, which has no dataUsingEncoding:
+        if ([bundle[@"metadata"] isKindOfClass:[NSString class]]) {
             NSError *error = nil;
             id metadata = [NSJSONSerialization JSONObjectWithData:[bundle[@"metadata"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:&error];
             bundleInfo[@"metadata"] = error ? bundle[@"metadata"] : metadata;
@@ -707,7 +932,7 @@ RCT_EXPORT_METHOD(deleteBundleById:(NSString *)id
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSArray *history = [self loadBundleHistory];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
     NSString *activePath = [defaults stringForKey:@"PATH"];
 
     NSDictionary *bundleToDelete = nil;
@@ -750,7 +975,7 @@ RCT_EXPORT_METHOD(deleteBundleById:(NSString *)id
     }
 
     // Delete bundle folder
-    BOOL isDeleted = [OtaHotUpdate deleteBundleAtPath:bundleToDelete[@"path"]];
+    BOOL isDeleted = [AppCore deleteBundleAtPath:bundleToDelete[@"path"]];
 
     // Remove from history
     NSMutableArray *updatedHistory = [NSMutableArray array];
@@ -768,11 +993,11 @@ RCT_EXPORT_METHOD(clearAllBundles:(double)a
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSArray *history = [self loadBundleHistory];
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSUserDefaults *defaults = AppCoreDefaults();
 
     // Delete all bundle folders
     for (NSDictionary *bundle in history) {
-        [OtaHotUpdate deleteBundleAtPath:bundle[@"path"]];
+        [AppCore deleteBundleAtPath:bundle[@"path"]];
     }
 
     // Clear history
@@ -831,7 +1056,7 @@ RCT_EXPORT_METHOD(writeFile:(NSString *)path
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
     (const facebook::react::ObjCTurboModule::InitParams &)params
 {
-    return std::make_shared<facebook::react::NativeOtaHotUpdateSpecJSI>(params);
+    return std::make_shared<facebook::react::NativeAppCoreSpecJSI>(params);
 }
 #endif
 

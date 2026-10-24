@@ -1,10 +1,10 @@
-package com.otahotupdate
+package com.appcore
 
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.Promise
 
-abstract class OtaHotUpdateSpec internal constructor(context: ReactApplicationContext) :
+abstract class AppCoreSpec internal constructor(context: ReactApplicationContext) :
   ReactContextBaseJavaModule(context) {
 
   abstract fun setupBundlePath(path: String?, extension: String?, version: Double?, maxVersions: Double?, metadata: String?, promise: Promise)
